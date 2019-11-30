@@ -56,7 +56,24 @@ patch_fstab fstab.tuna /cache ext4 options "barrier=1" "barrier=0,nomblk_io_subm
 patch_fstab fstab.tuna /data ext4 options "data=ordered" "nomblk_io_submit,data=writeback";
 append_file fstab.tuna "usbdisk" fstab;
 
-# end ramdisk changes
+# combine kernel image and dtbs if separated in the zip
+decompressed_image=$home/kernel/Image;
+compressed_image=$decompressed_image.$kernel_comp_ext;
+combined_image=$home/Image.$kernel_comp_ext-dtb;
+if [ -f $compressed_image ]; then
+  # hexpatch the kernel if Magisk is installed ('skip_initramfs' -> 'want_initramfs')
+  if ! $bin/magiskboot cpio $split_img/ramdisk.cpio test; then
+    ui_print " " "Magisk detected! Patching kernel so reflashing Magisk is not necessary...";
+    $bin/magiskboot --decompress $compressed_image $decompressed_image;
+    $bin/magiskboot --hexpatch $decompressed_image 736B69705F696E697472616D667300 77616E745F696E697472616D667300;
+    $bin/magiskboot --compress=$kernel_compression $decompressed_image $compressed_image;
+  fi;
+  if [ -d $home/dtbs ]; then
+    cat $compressed_image $home/dtbs/*.dtb > $combined_image;
+  else
+    mv -f $compressed_image $home;
+  fi;
+fi;
 
 write_boot;
 ## end install
