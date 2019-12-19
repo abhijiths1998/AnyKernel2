@@ -1,19 +1,17 @@
-# AnyKernel3 Ramdisk Mod Script
+k# AnyKernel3 Ramdisk Mod Script
 # osm0sis @ xda-developers
 
 ## AnyKernel setup
 # begin properties
 properties() { '
-kernel.string=Matrix-Kernel by abhijiths362 @ xda-developers
+kernel.string=Matrix_kernel by @abhijiths362
 do.devicecheck=1
 do.modules=0
 do.cleanup=1
-do.cleanuponabort=0
+do.cleanuponabort=1
 device.name1=beryllium
-device.name2=PocoF1
+device.name2=
 device.name3=
-device.name4=
-device.name5=
 supported.versions=
 supported.patchlevels=
 '; } # end properties
@@ -32,41 +30,33 @@ ramdisk_compression=auto;
 ## AnyKernel file attributes
 # set permissions/ownership for included ramdisk files
 set_perm_recursive 0 0 755 644 $ramdisk/*;
-set_perm_recursive 0 0 750 750 $ramdisk/init.qcom.rc $ramdisk/sbin;
+set_perm_recursive 0 0 750 750 $ramdisk/init* $ramdisk/sbin;
 
 
 ## AnyKernel install
 dump_boot;
 
-# migrate from /overlay to /overlay.d to enable SAR Magisk
-if [ -d $ramdisk/overlay ]; then
-  rm -rf $ramdisk/overlay;
-fi;
-
-# use custom kernel compression
-kernel_compression=gzip;
-kernel_comp_ext=gz;
-
-
-# combine kernel image and dtbs if separated in the zip
-decompressed_image=$home/kernel/Image;
-compressed_image=$decompressed_image.$kernel_comp_ext;
-combined_image=$home/Image.$kernel_comp_ext-dtb;
-if [ -f $compressed_image ]; then
-  # hexpatch the kernel if Magisk is installed ('skip_initramfs' -> 'want_initramfs')
-  if ! $bin/magiskboot cpio $split_img/ramdisk.cpio test; then
-    ui_print " " "Magisk detected! Patching kernel so reflashing Magisk is not necessary...";
-    $bin/magiskboot --decompress $compressed_image $decompressed_image;
-    $bin/magiskboot --hexpatch $decompressed_image 736B69705F696E697472616D667300 77616E745F696E697472616D667300;
-    $bin/magiskboot --compress=$kernel_compression $decompressed_image $compressed_image;
-  fi;
-  if [ -d $home/dtbs ]; then
-    cat $compressed_image $home/dtbs/*.dtb > $combined_image;
+# Add skip_override parameter to cmdline so user doesn't have to reflash Magisk
+# And notify about Magisk preservation in case of Android 10
+android_version="$(file_getprop /system/build.prop "ro.build.version.release")";
+# Do not do this for Android 10 ( A only SAR )
+if [ "$android_version" != "10" ]; then
+  if [ -d $ramdisk/.backup ]; then
+    ui_print " "; ui_print "Magisk detected! Patching cmdline so reflashing Magisk is not necessary...";
+    patch_cmdline "skip_override" "skip_override";
   else
-    mv -f $compressed_image $home;
+    patch_cmdline "skip_override" "";
   fi;
+else
+  ui_print " "; ui_print "You are on android 10! Not performing Magisk preservation. Please reflash Magisk if you want to keep it.";
 fi;
 
+# Set magisk policy
+ui_print "Setting up magisk policy for SELinux...";
+$bin/magiskpolicy --load sepolicy --save sepolicy "allow init rootfs file execute_no_trans";
+$bin/magiskpolicy --load sepolicy_debug --save sepolicy_debug "allow init rootfs file execute_no_trans";
+
+# Write boot
 write_boot;
 ## end install
 
